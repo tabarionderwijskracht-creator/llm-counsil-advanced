@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, memo, useCallback } from 'react';
 import Markdown from './Markdown';
+import Stage0 from './Stage0';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
@@ -398,6 +399,17 @@ const AssistantMessage = memo(function AssistantMessage({
           </button>
         </div>
       </div>
+
+      {/* Stage 0 - Web Research */}
+      {msg.loading?.stage0 && (
+        <div className="stage-loading">
+          <div className="stage-loading-header">
+            <div className="spinner"></div>
+            <span>Web Research: Searching...</span>
+          </div>
+        </div>
+      )}
+      {msg.stage0 && <Stage0 research={msg.stage0} />}
 
       {/* Stage 1 */}
       {msg.loading?.stage1 && (
@@ -925,13 +937,23 @@ export default function ChatInterface({
   const [attachments, setAttachments] = useState([]);
   const [uploadError, setUploadError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [researchEnabled, setResearchEnabled] = useState(() => {
+    // Load from localStorage, default to true
+    const stored = localStorage.getItem('llm-council-research-enabled');
+    return stored === null ? true : stored === 'true';
+  });
   const fileInputRef = useRef(null);
+
+  // Persist research preference
+  useEffect(() => {
+    localStorage.setItem('llm-council-research-enabled', researchEnabled.toString());
+  }, [researchEnabled]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (input.trim() && !isLoading && !isPendingResponse) {
       const attachmentIds = attachments.map(a => a.id);
-      onSendMessage(input, attachmentIds);
+      onSendMessage(input, attachmentIds, researchEnabled);
       setInput('');
       setAttachments([]);
     }
@@ -1097,6 +1119,20 @@ export default function ChatInterface({
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
               </svg>
             )}
+          </button>
+
+          {/* Web Research toggle */}
+          <button
+            type="button"
+            className={`research-toggle ${researchEnabled ? 'enabled' : ''}`}
+            onClick={() => setResearchEnabled(!researchEnabled)}
+            disabled={isLoading || isPendingResponse}
+            title={researchEnabled ? 'Web research enabled - click to disable' : 'Web research disabled - click to enable'}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
           </button>
 
           <textarea

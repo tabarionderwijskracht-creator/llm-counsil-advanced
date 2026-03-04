@@ -524,6 +524,50 @@
   animation: spin 0.8s linear infinite;
 }
 
+/* Research toggle button */
+.research-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: #f0f0f0;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.research-toggle:hover:not(:disabled) {
+  background: #e8f4ff;
+  color: #4a90e2;
+  border-color: #4a90e2;
+}
+
+.research-toggle.enabled {
+  background: #e8f4ff;
+  color: #4a90e2;
+  border-color: #4a90e2;
+}
+
+.research-toggle.enabled:hover:not(:disabled) {
+  background: #d0e8ff;
+}
+
+.research-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.research-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
 /* Attachments bar */
 .attachments-bar {
   display: flex;

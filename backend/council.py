@@ -1,14 +1,87 @@
 """3-stage LLM Council orchestration."""
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from .openrouter import query_models_parallel, query_model
-from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .config import COUNCIL_MODELS, CHAIRMAN_MODEL, RESEARCH_MODEL
+
+# Research system prompt for Stage 0
+RESEARCH_SYSTEM_PROMPT = """You are a research assistant. Search the web to find current, factual information relevant to the user's question. Focus on:
+- Recent news and developments
+- Official sources and documentation
+- Statistics and data
+- Expert opinions and analyses
+
+Provide a comprehensive research summary that will help other AI models answer the question accurately."""
+
+
+async def stage0_research(user_query: str) -> Optional[Dict[str, Any]]:
+    """
+    Stage 0: Use Perplexity to perform web research before council deliberation.
+
+    Args:
+        user_query: The user's question
+
+    Returns:
+        Dict with 'content' and 'sources' keys, or None if research failed
+    """
+    messages = [
+        {"role": "system", "content": RESEARCH_SYSTEM_PROMPT},
+        {"role": "user", "content": user_query}
+    ]
+
+    print(f"\n=== STAGE 0 RESEARCH ===")
+    print(f"Query: {user_query[:80]}...")
+
+    response = await query_model(RESEARCH_MODEL, messages, timeout=120.0)
+
+    if response is None:
+        print("Research failed - Perplexity did not respond")
+        return None
+
+    # Extract citations if available (Perplexity returns these)
+    citations = response.get("citations", [])
+
+    # Convert citations to sources format
+    sources = []
+    for i, url in enumerate(citations):
+        sources.append({
+            "title": f"Source {i + 1}",
+            "url": url
+        })
+
+    print(f"Research complete: {len(response.get('content', ''))} chars, {len(sources)} sources")
+    print("=== END STAGE 0 ===\n")
+
+    return {
+        "content": response.get("content", ""),
+        "sources": sources
+    }
+
+
+def build_prompt_with_research(query: str, research: Optional[Dict[str, Any]]) -> str:
+    """Build a user prompt that includes research context."""
+    if not research:
+        return query
+
+    sources_text = "\n".join(
+        f"- {s['title']}: {s['url']}" for s in research.get('sources', [])
+    )
+
+    return f"""[Web Research Results]
+{research['content']}
+
+Sources:
+{sources_text}
+
+[User Question]
+{query}"""
 
 
 async def stage1_collect_responses(
     user_query: str,
     conversation_history: List[Dict[str, Any]] = None,
-    on_model_complete: callable = None
+    on_model_complete: callable = None,
+    research_context: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
@@ -17,6 +90,7 @@ async def stage1_collect_responses(
         user_query: The user's question
         conversation_history: Previous messages in the conversation (optional)
         on_model_complete: Optional callback(model, response) for progress tracking
+        research_context: Optional research results from Stage 0 to include in prompt
 
     Returns:
         List of dicts with 'model' and 'response' keys
@@ -27,6 +101,7 @@ async def stage1_collect_responses(
     # Debug logging
     print(f"\n=== STAGE 1 DEBUG ===")
     print(f"Conversation history: {len(conversation_history) if conversation_history else 0} messages")
+    print(f"Research context: {'Yes' if research_context else 'No'}")
 
     if conversation_history:
         for i, msg in enumerate(conversation_history):
@@ -43,9 +118,12 @@ async def stage1_collect_responses(
             else:
                 print(f"  [{i}] SKIPPED: role={role}, has_stage3={bool(msg.get('stage3'))}")
 
+    # Build the current query - include research context if available
+    current_query = build_prompt_with_research(user_query, research_context)
+
     # Add current user query
-    messages.append({"role": "user", "content": user_query})
-    print(f"  [NEW] USER: {user_query[:80]}...")
+    messages.append({"role": "user", "content": current_query})
+    print(f"  [NEW] USER: {current_query[:80]}...")
     print(f"Total messages to send: {len(messages)}")
     print("=== END DEBUG ===\n")
 

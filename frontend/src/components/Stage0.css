@@ -1,0 +1,120 @@
+/* Stage 0 - Web Research */
+.stage0 {
+  margin: 24px 0;
+  background: #f0f7ff;
+  border-radius: 8px;
+  border: 1px solid #c5ddf8;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.stage0 .stage-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.stage0 .stage-header:hover {
+  background: #e0eefa;
+}
+
+.stage0 .stage-title {
+  margin: 0;
+  color: #1a5490;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.stage0 .stage-title::before {
+  content: "🔍 ";
+}
+
+.stage0 .stage-summary {
+  color: #5a8fc7;
+  font-size: 13px;
+  margin-left: auto;
+}
+
+.stage0 .expand-icon {
+  width: 20px;
+  height: 20px;
+  color: #5a8fc7;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.stage0 .expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.stage0 .stage-content {
+  padding: 0 20px 20px 20px;
+}
+
+.stage0 .research-content {
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 6px;
+  border: 1px solid #c5ddf8;
+  color: #333;
+  line-height: 1.6;
+}
+
+.stage0 .sources-section {
+  margin-top: 16px;
+}
+
+.stage0 .sources-title {
+  margin: 0 0 8px 0;
+  color: #1a5490;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stage0 .sources-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stage0 .source-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border-radius: 6px;
+  border: 1px solid #c5ddf8;
+}
+
+.stage0 .source-icon {
+  width: 16px;
+  height: 16px;
+  color: #5a8fc7;
+  flex-shrink: 0;
+}
+
+.stage0 .source-link {
+  color: #1a5490;
+  text-decoration: none;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage0 .source-link:hover {
+  text-decoration: underline;
+  color: #0d3a66;
+}

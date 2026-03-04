@@ -134,6 +134,8 @@ async def _query_openrouter(
     The caller should supply a model identifier such as "gpt-5.2" or
     "claude-sonnet-4-5"; we simply forward the request to OpenRouter's
     /chat/completions endpoint using the shared OPENROUTER_API_KEY.
+
+    For Perplexity models, also extracts citations from the response.
     """
     if not OPENROUTER_API_KEY:
         print("OpenRouter key not set")
@@ -154,10 +156,19 @@ async def _query_openrouter(
         response.raise_for_status()
         data = response.json()
         message = data["choices"][0]["message"]
-        return {
+
+        result = {
             "content": message.get("content"),
             "reasoning_details": message.get("reasoning_details"),
         }
+
+        # Extract citations for Perplexity models
+        # Perplexity returns citations in the response metadata
+        citations = data.get("citations")
+        if citations:
+            result["citations"] = citations
+
+        return result
 
 
 async def _query_google(

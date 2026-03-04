@@ -104,15 +104,19 @@ export const api = {
    * @param {string[]} excludedMessageIds - Optional array of message IDs to exclude from context
    * @param {AbortSignal} signal - Optional AbortSignal for cancellation
    * @param {string[]} attachmentIds - Optional array of attachment IDs to include as context
+   * @param {boolean} researchEnabled - Optional flag to enable web research (Stage 0)
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent, excludedMessageIds = null, signal = null, attachmentIds = null) {
+  async sendMessageStream(conversationId, content, onEvent, excludedMessageIds = null, signal = null, attachmentIds = null, researchEnabled = null) {
     const body = { content };
     if (excludedMessageIds && excludedMessageIds.length > 0) {
       body.excluded_message_ids = excludedMessageIds;
     }
     if (attachmentIds && attachmentIds.length > 0) {
       body.attachment_ids = attachmentIds;
+    }
+    if (researchEnabled !== null) {
+      body.research_enabled = researchEnabled;
     }
 
     const fetchOptions = {

@@ -394,6 +394,44 @@ function App() {
         }
         break;
 
+      case 'stage0_start':
+        // Web research starting
+        setCurrentConversation(prev => {
+          if (!prev) return prev;
+          const assistantMsgId = prev.current_path[prev.current_path.length - 1];
+          if (assistantMsgId && prev.messages[assistantMsgId]?.role === 'assistant') {
+            const newMessages = { ...prev.messages };
+            newMessages[assistantMsgId] = {
+              ...newMessages[assistantMsgId],
+              loading: {
+                ...newMessages[assistantMsgId].loading,
+                stage0: true
+              }
+            };
+            return { ...prev, messages: newMessages };
+          }
+          return prev;
+        });
+        break;
+
+      case 'stage0_complete':
+        // Web research complete
+        setCurrentConversation(prev => {
+          if (!prev) return prev;
+          const assistantMsgId = prev.current_path[prev.current_path.length - 1];
+          if (assistantMsgId && prev.messages[assistantMsgId]?.role === 'assistant') {
+            const newMessages = { ...prev.messages };
+            newMessages[assistantMsgId] = {
+              ...newMessages[assistantMsgId],
+              stage0: event.data,
+              loading: { ...newMessages[assistantMsgId].loading, stage0: false }
+            };
+            return { ...prev, messages: newMessages };
+          }
+          return prev;
+        });
+        break;
+
       case 'stage1_start':
         // Initialize model progress tracking
         setCurrentConversation(prev => {
@@ -565,7 +603,7 @@ function App() {
     }
   }, []);
 
-  const handleSendMessage = async (content, attachmentIds = []) => {
+  const handleSendMessage = async (content, attachmentIds = [], researchEnabled = null) => {
     if (!currentConversationId) return;
 
     setIsLoading(true);
@@ -595,11 +633,12 @@ function App() {
         id: tempAssistantMsgId,
         parent_id: tempUserMsgId,
         role: 'assistant',
+        stage0: null,
         stage1: null,
         stage2: null,
         stage3: null,
         metadata: null,
-        loading: { stage1: true, stage2: false, stage3: false },
+        loading: { stage0: researchEnabled, stage1: !researchEnabled, stage2: false, stage3: false },
         created_at: new Date().toISOString()
       };
 
@@ -615,7 +654,7 @@ function App() {
         current_leaf_id: tempAssistantMsgId
       }));
 
-      // Send message with streaming, passing excluded message IDs (for API context) and attachments
+      // Send message with streaming, passing excluded message IDs (for API context), attachments, and research flag
       const excludedIds = Array.from(effectiveExcludedFromContext);
       await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
         // When we get the real IDs, update state
@@ -653,7 +692,7 @@ function App() {
         } else {
           processStreamEvent(eventType, event, userMsgId, (id) => { userMsgId = id; });
         }
-      }, excludedIds, abortControllerRef.current?.signal, attachmentIds);
+      }, excludedIds, abortControllerRef.current?.signal, attachmentIds, researchEnabled);
     } catch (error) {
       // Ignore abort errors (user cancelled)
       if (error.name === 'AbortError') {

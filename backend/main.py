@@ -17,12 +17,13 @@ from . import search
 from .council import (
     run_full_council,
     generate_conversation_title,
+    stage0_research,
     stage1_collect_responses,
     stage2_collect_rankings,
     stage3_synthesize_final,
     calculate_aggregate_rankings
 )
-from .config import COUNCIL_MODELS, UPLOADS_DIR, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS, MAX_TEXT_CHARS, WARN_TEXT_CHARS
+from .config import COUNCIL_MODELS, UPLOADS_DIR, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS, MAX_TEXT_CHARS, WARN_TEXT_CHARS, RESEARCH_ENABLED_DEFAULT
 
 # Track running jobs for cancellation
 # Key: (conversation_id, message_id), Value: {"task": asyncio.Task, "cancelled": bool}
@@ -66,6 +67,7 @@ class SendMessageRequest(BaseModel):
     content: str
     excluded_message_ids: Optional[List[str]] = None  # Message IDs to exclude from context
     attachment_ids: Optional[List[str]] = None  # File IDs to include as context
+    research_enabled: Optional[bool] = None  # Enable Stage 0 web research (defaults to config)
 
 
 class EditMessageRequest(BaseModel):
@@ -329,6 +331,23 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             if is_first_message:
                 title_task = asyncio.create_task(generate_conversation_title(request.content))
 
+            # Stage 0: Web research (if enabled)
+            research_enabled = request.research_enabled if request.research_enabled is not None else RESEARCH_ENABLED_DEFAULT
+            research_context = None
+
+            if research_enabled:
+                yield f"data: {json.dumps({'type': 'stage0_start'})}\n\n"
+                research_context = await stage0_research(request.content)
+                if research_context:
+                    yield f"data: {json.dumps({'type': 'stage0_complete', 'data': research_context})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'stage0_complete', 'data': None})}\n\n"
+
+                # Check for cancellation after stage 0
+                if is_cancelled():
+                    yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Job cancelled by user'})}\n\n"
+                    return
+
             # Stage 1: Collect responses (with conversation history)
             # Initialize model progress for all council models
             initial_progress = {model: 'pending' for model in COUNCIL_MODELS}
@@ -337,7 +356,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
             # Run stage1 with progress tracking (use query_with_context for document support)
             stage1_task = asyncio.create_task(
-                stage1_collect_responses(query_with_context, conversation_history, on_model_complete=model_progress_callback)
+                stage1_collect_responses(query_with_context, conversation_history, on_model_complete=model_progress_callback, research_context=research_context)
             )
 
             # Emit progress events as they come in
