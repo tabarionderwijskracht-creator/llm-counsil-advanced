@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "html2pdf.js": "^0.14.0",
+    "jspdf": "^4.2.0",
     "katex": "^0.16.27",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

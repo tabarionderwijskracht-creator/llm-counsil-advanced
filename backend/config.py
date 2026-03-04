@@ -20,19 +20,25 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # You may also use the "openrouter" provider if you want a single API key
 # for everything.  In that case the model identifiers should look like
 # "openrouter/gpt-5.2" or "openrouter/gpt-5.1" etc.
-COUNCIL_MODELS = [
+
+# All available models that can be selected in the UI
+AVAILABLE_MODELS = [
     "openrouter/openai/gpt-5.1",
-    "openrouter/google/gemini-2.5-pro-preview",
-    "openrouter/anthropic/claude-3.5-sonnet",
+    "openrouter/google/gemini-3-pro-preview",
+    "openrouter/anthropic/claude-sonnet-4.5",
+    "openrouter/x-ai/grok-4",
 ]
+
+# Default models used when none are selected (all available by default)
+COUNCIL_MODELS = AVAILABLE_MODELS.copy()
 
 # Research configuration (Stage 0)
 # Perplexity is used for web research before council deliberation
 RESEARCH_MODEL = "openrouter/perplexity/sonar-deep-research"
 RESEARCH_ENABLED_DEFAULT = True  # Can be overridden per-request
 
-# Chairman model - synthesizes final response
-CHAIRMAN_MODEL = "openrouter/openai/gpt-5.1"
+# Chairman model - synthesizes final response (o3 for best reasoning)
+CHAIRMAN_MODEL = "openrouter/openai/o3"
 
 # Provider API endpoints (used when calling services directly)
 PROVIDER_ENDPOINTS = {

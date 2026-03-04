@@ -478,3 +478,63 @@
   background: #e8f0fe;
   color: #4CAF50;
 }
+
+/* Conversation rename styles */
+.action-btn.rename:hover {
+  color: #4CAF50;
+}
+
+.conversation-rename-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: #f8f8f8;
+  border: 1px solid #4CAF50;
+  border-radius: 6px;
+}
+
+.conversation-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+}
+
+.conversation-rename-input:focus {
+  border-color: #4CAF50;
+}
+
+.rename-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.rename-btn.save {
+  background: #4CAF50;
+  color: white;
+}
+
+.rename-btn.save:hover {
+  background: #388E3C;
+}
+
+.rename-btn.cancel {
+  background: #e5e7eb;
+  color: #666;
+}
+
+.rename-btn.cancel:hover {
+  background: #d1d5db;
+}

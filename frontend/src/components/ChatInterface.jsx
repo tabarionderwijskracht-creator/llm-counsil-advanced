@@ -931,7 +931,10 @@ export default function ChatInterface({
   copyCharThreshold,
   contextCharThreshold,
   onCopyCharThresholdChange,
-  onContextCharThresholdChange
+  onContextCharThresholdChange,
+  availableModels = [],
+  selectedModels = [],
+  onToggleModel
 }) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -942,7 +945,35 @@ export default function ChatInterface({
     const stored = localStorage.getItem('llm-council-research-enabled');
     return stored === null ? true : stored === 'true';
   });
+  const [showModelSelector, setShowModelSelector] = useState(false);
   const fileInputRef = useRef(null);
+  const modelSelectorRef = useRef(null);
+
+  // Close model selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (modelSelectorRef.current && !modelSelectorRef.current.contains(e.target)) {
+        setShowModelSelector(false);
+      }
+    };
+    if (showModelSelector) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showModelSelector]);
+
+  // Helper to get short model name for display
+  const getShortModelName = (model) => {
+    // openrouter/openai/gpt-5.1 -> gpt-5.1
+    // openrouter/google/gemini-3-pro-preview -> gemini-3-pro
+    const parts = model.split('/');
+    const name = parts[parts.length - 1];
+    // Shorten long names
+    if (name.length > 20) {
+      return name.substring(0, 17) + '...';
+    }
+    return name;
+  };
 
   // Persist research preference
   useEffect(() => {
@@ -1134,6 +1165,45 @@ export default function ChatInterface({
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
           </button>
+
+          {/* Model selector */}
+          <div className="model-selector-container" ref={modelSelectorRef}>
+            <button
+              type="button"
+              className={`model-selector-toggle ${selectedModels.length < availableModels.length ? 'partial' : ''}`}
+              onClick={() => setShowModelSelector(!showModelSelector)}
+              disabled={isLoading || isPendingResponse}
+              title={`${selectedModels.length}/${availableModels.length} models selected`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              <span className="model-count">{selectedModels.length}</span>
+            </button>
+            {showModelSelector && (
+              <div className="model-selector-dropdown">
+                <div className="model-selector-header">
+                  Select Models ({selectedModels.length}/{availableModels.length})
+                </div>
+                {availableModels.map(model => (
+                  <label key={model} className="model-option">
+                    <input
+                      type="checkbox"
+                      checked={selectedModels.includes(model)}
+                      onChange={() => onToggleModel(model)}
+                      disabled={selectedModels.length === 1 && selectedModels.includes(model)}
+                    />
+                    <span className="model-name" title={model}>
+                      {getShortModelName(model)}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
 
           <textarea
             className="message-input"

@@ -78,6 +78,8 @@ function App() {
   const [contextCharThreshold, setContextCharThreshold] = useState(100000); // Auto-exclude from context if > this
   const [isSearchOpen, setIsSearchOpen] = useState(false); // Search modal state
   const [folders, setFolders] = useState([]); // Folder list
+  const [availableModels, setAvailableModels] = useState([]); // Available models from backend
+  const [selectedModels, setSelectedModels] = useState([]); // User-selected models for council
 
   // Global keyboard shortcut for search (Cmd+K / Ctrl+K)
   useEffect(() => {
@@ -92,11 +94,24 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Load available models from backend
+  const loadAvailableModels = async () => {
+    try {
+      const data = await api.getAvailableModels();
+      setAvailableModels(data.models || []);
+      // Default: all models selected
+      setSelectedModels(data.models || []);
+    } catch (error) {
+      console.error('Failed to load available models:', error);
+    }
+  };
+
   // Load conversations on mount and check URL for conversation ID
   useEffect(() => {
     loadConversations();
     loadArchivedConversations();
     loadFolders();
+    loadAvailableModels();
 
     // Check URL for conversation parameter
     const params = new URLSearchParams(window.location.search);
@@ -334,6 +349,22 @@ function App() {
       ));
     } catch (error) {
       console.error('Failed to move conversation:', error);
+    }
+  };
+
+  const handleRenameConversation = async (conversationId, title) => {
+    try {
+      await api.renameConversation(conversationId, title);
+      // Update local state
+      setConversations(conversations.map(c =>
+        c.id === conversationId ? { ...c, title } : c
+      ));
+      // Also update current conversation if it's the one being renamed
+      if (currentConversation && currentConversation.id === conversationId) {
+        setCurrentConversation(prev => ({ ...prev, title }));
+      }
+    } catch (error) {
+      console.error('Failed to rename conversation:', error);
     }
   };
 
@@ -706,7 +737,7 @@ function App() {
         current_leaf_id: tempAssistantMsgId
       }));
 
-      // Send message with streaming, passing excluded message IDs (for API context), attachments, and research flag
+      // Send message with streaming, passing excluded message IDs (for API context), attachments, research flag, and selected models
       const excludedIds = Array.from(effectiveExcludedFromContext);
       await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
         // When we get the real IDs, update state
@@ -744,7 +775,7 @@ function App() {
         } else {
           processStreamEvent(eventType, event, userMsgId, (id) => { userMsgId = id; });
         }
-      }, excludedIds, abortControllerRef.current?.signal, attachmentIds, researchEnabled);
+      }, excludedIds, abortControllerRef.current?.signal, attachmentIds, researchEnabled, selectedModels);
     } catch (error) {
       // Ignore abort errors (user cancelled)
       if (error.name === 'AbortError') {
@@ -1118,6 +1149,7 @@ function App() {
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
         onMoveConversation={handleMoveConversation}
+        onRenameConversation={handleRenameConversation}
         showArchived={showArchived}
         onToggleShowArchived={handleToggleShowArchived}
         onOpenSearch={() => setIsSearchOpen(true)}
@@ -1157,6 +1189,15 @@ function App() {
         onUploadFile={async (file) => {
           if (!currentConversationId) throw new Error('No conversation selected');
           return api.uploadFile(currentConversationId, file);
+        }}
+        availableModels={availableModels}
+        selectedModels={selectedModels}
+        onToggleModel={(model) => {
+          setSelectedModels(prev =>
+            prev.includes(model)
+              ? prev.filter(m => m !== model)
+              : [...prev, model]
+          );
         }}
       />
     </div>

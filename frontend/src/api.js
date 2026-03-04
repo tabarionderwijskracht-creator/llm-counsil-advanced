@@ -35,6 +35,18 @@ async function processSSEStream(response, onEvent) {
 
 export const api = {
   /**
+   * Get available models for selection.
+   * @returns {Promise<{models: string[]}>}
+   */
+  async getAvailableModels() {
+    const response = await fetch(`${API_BASE}/api/models`);
+    if (!response.ok) {
+      throw new Error('Failed to get available models');
+    }
+    return response.json();
+  },
+
+  /**
    * List all conversations.
    */
   async listConversations() {
@@ -105,9 +117,10 @@ export const api = {
    * @param {AbortSignal} signal - Optional AbortSignal for cancellation
    * @param {string[]} attachmentIds - Optional array of attachment IDs to include as context
    * @param {boolean} researchEnabled - Optional flag to enable web research (Stage 0)
+   * @param {string[]} selectedModels - Optional array of model IDs to use for the council
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent, excludedMessageIds = null, signal = null, attachmentIds = null, researchEnabled = null) {
+  async sendMessageStream(conversationId, content, onEvent, excludedMessageIds = null, signal = null, attachmentIds = null, researchEnabled = null, selectedModels = null) {
     const body = { content };
     if (excludedMessageIds && excludedMessageIds.length > 0) {
       body.excluded_message_ids = excludedMessageIds;
@@ -117,6 +130,9 @@ export const api = {
     }
     if (researchEnabled !== null) {
       body.research_enabled = researchEnabled;
+    }
+    if (selectedModels && selectedModels.length > 0) {
+      body.selected_models = selectedModels;
     }
 
     const fetchOptions = {
@@ -520,6 +536,29 @@ export const api = {
     );
     if (!response.ok) {
       throw new Error('Failed to move conversation');
+    }
+    return response.json();
+  },
+
+  /**
+   * Rename a conversation.
+   * @param {string} conversationId - The conversation ID
+   * @param {string} title - The new title
+   * @returns {Promise<{status: string, title: string}>}
+   */
+  async renameConversation(conversationId, title) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/rename`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to rename conversation');
     }
     return response.json();
   },

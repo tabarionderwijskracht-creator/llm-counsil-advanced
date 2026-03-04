@@ -23,7 +23,7 @@ from .council import (
     stage3_synthesize_final,
     calculate_aggregate_rankings
 )
-from .config import COUNCIL_MODELS, UPLOADS_DIR, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS, MAX_TEXT_CHARS, WARN_TEXT_CHARS, RESEARCH_ENABLED_DEFAULT
+from .config import COUNCIL_MODELS, AVAILABLE_MODELS, UPLOADS_DIR, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS, MAX_TEXT_CHARS, WARN_TEXT_CHARS, RESEARCH_ENABLED_DEFAULT
 
 # Track running jobs for cancellation
 # Key: (conversation_id, message_id), Value: {"task": asyncio.Task, "cancelled": bool}
@@ -68,6 +68,7 @@ class SendMessageRequest(BaseModel):
     excluded_message_ids: Optional[List[str]] = None  # Message IDs to exclude from context
     attachment_ids: Optional[List[str]] = None  # File IDs to include as context
     research_enabled: Optional[bool] = None  # Enable Stage 0 web research (defaults to config)
+    selected_models: Optional[List[str]] = None  # Models to use (defaults to all AVAILABLE_MODELS)
 
 
 class EditMessageRequest(BaseModel):
@@ -110,6 +111,11 @@ class FolderResponse(BaseModel):
     id: str
     name: str
     created_at: str
+
+
+class RenameConversationRequest(BaseModel):
+    """Request to rename a conversation."""
+    title: str
 
 
 class ConversationV2(BaseModel):
@@ -161,6 +167,12 @@ def get_attachment_text(conversation_id: str, attachment_ids: List[str]) -> str:
 async def root():
     """Health check endpoint."""
     return {"status": "ok", "service": "LLM Council API"}
+
+
+@app.get("/api/models")
+async def get_available_models():
+    """Get list of available models for selection."""
+    return {"models": AVAILABLE_MODELS}
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
@@ -351,6 +363,14 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     "page_count": page_count
                 })
 
+    # Determine which models to use (filter to only valid available models)
+    if request.selected_models:
+        models_to_use = [m for m in request.selected_models if m in AVAILABLE_MODELS]
+        if not models_to_use:
+            models_to_use = AVAILABLE_MODELS  # Fallback if all invalid
+    else:
+        models_to_use = AVAILABLE_MODELS
+
     async def event_generator():
         user_msg_id = None
         job_key = None
@@ -417,19 +437,19 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     return
 
             # Stage 1: Collect responses (with conversation history)
-            # Initialize model progress for all council models
-            initial_progress = {model: 'pending' for model in COUNCIL_MODELS}
+            # Initialize model progress for selected models
+            initial_progress = {model: 'pending' for model in models_to_use}
             storage.update_job_status(conversation_id, user_msg_id, 'stage1', model_progress=initial_progress)
-            yield f"data: {json.dumps({'type': 'stage1_start', 'data': {'models': COUNCIL_MODELS}})}\n\n"
+            yield f"data: {json.dumps({'type': 'stage1_start', 'data': {'models': models_to_use}})}\n\n"
 
             # Run stage1 with progress tracking (use query_with_context for document support)
             stage1_task = asyncio.create_task(
-                stage1_collect_responses(query_with_context, conversation_history, on_model_complete=model_progress_callback, research_context=research_context)
+                stage1_collect_responses(query_with_context, conversation_history, on_model_complete=model_progress_callback, research_context=research_context, models=models_to_use)
             )
 
             # Emit progress events as they come in
             completed_count = 0
-            while completed_count < len(COUNCIL_MODELS):
+            while completed_count < len(models_to_use):
                 try:
                     # Wait for either a progress event or stage1 to complete
                     done, pending = await asyncio.wait(
@@ -466,8 +486,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 return
 
             # Stage 2: Collect rankings
-            storage.update_job_status(conversation_id, user_msg_id, 'stage2', model_progress={model: 'pending' for model in COUNCIL_MODELS})
-            yield f"data: {json.dumps({'type': 'stage2_start', 'data': {'models': COUNCIL_MODELS}})}\n\n"
+            storage.update_job_status(conversation_id, user_msg_id, 'stage2', model_progress={model: 'pending' for model in models_to_use})
+            yield f"data: {json.dumps({'type': 'stage2_start', 'data': {'models': models_to_use}})}\n\n"
 
             # Clear the queue for stage 2
             while not event_queue.empty():
@@ -477,12 +497,12 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     pass
 
             stage2_task = asyncio.create_task(
-                stage2_collect_rankings(query_with_context, stage1_results, on_model_complete=model_progress_callback)
+                stage2_collect_rankings(query_with_context, stage1_results, on_model_complete=model_progress_callback, models=models_to_use)
             )
 
             # Emit progress events for stage 2
             completed_count = 0
-            while completed_count < len(COUNCIL_MODELS):
+            while completed_count < len(models_to_use):
                 try:
                     done, pending = await asyncio.wait(
                         [asyncio.create_task(event_queue.get()), stage2_task],
@@ -492,7 +512,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
                     for task in done:
                         if task == stage2_task or (hasattr(task, '_coro') and task._coro == stage2_task._coro):
-                            completed_count = len(COUNCIL_MODELS)
+                            completed_count = len(models_to_use)
                             break
                         else:
                             try:
@@ -837,6 +857,18 @@ async def cancel_job(conversation_id: str, message_id: str):
         pass  # Message might not exist
 
     return {"status": "cancelled", "message": "Job cancelled successfully"}
+
+
+@app.put("/api/conversations/{conversation_id}/rename")
+async def rename_conversation(conversation_id: str, request: RenameConversationRequest):
+    """
+    Rename a conversation.
+    """
+    try:
+        storage.update_conversation_title(conversation_id, request.title)
+        return {"status": "ok", "title": request.title}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Conversation not found")
 
 
 @app.delete("/api/conversations/{conversation_id}")

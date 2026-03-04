@@ -81,7 +81,8 @@ async def stage1_collect_responses(
     user_query: str,
     conversation_history: List[Dict[str, Any]] = None,
     on_model_complete: callable = None,
-    research_context: Optional[Dict[str, Any]] = None
+    research_context: Optional[Dict[str, Any]] = None,
+    models: List[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
@@ -91,10 +92,13 @@ async def stage1_collect_responses(
         conversation_history: Previous messages in the conversation (optional)
         on_model_complete: Optional callback(model, response) for progress tracking
         research_context: Optional research results from Stage 0 to include in prompt
+        models: List of models to query (defaults to COUNCIL_MODELS)
 
     Returns:
         List of dicts with 'model' and 'response' keys
     """
+    # Use provided models or fall back to default
+    council_models = models if models is not None else COUNCIL_MODELS
     # Build messages with conversation history
     messages = []
 
@@ -129,7 +133,7 @@ async def stage1_collect_responses(
 
     # Query all models in parallel with progress callback
     responses = await query_models_parallel(
-        COUNCIL_MODELS,
+        council_models,
         messages,
         on_model_complete=on_model_complete
     )
@@ -149,7 +153,8 @@ async def stage1_collect_responses(
 async def stage2_collect_rankings(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    on_model_complete: callable = None
+    on_model_complete: callable = None,
+    models: List[str] = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
@@ -157,10 +162,14 @@ async def stage2_collect_rankings(
     Args:
         user_query: The original user query
         stage1_results: Results from Stage 1
+        on_model_complete: Optional callback(model, response) for progress tracking
+        models: List of models to query (defaults to COUNCIL_MODELS)
 
     Returns:
         Tuple of (rankings list, label_to_model mapping)
     """
+    # Use provided models or fall back to default
+    council_models = models if models is not None else COUNCIL_MODELS
     # Create anonymized labels for responses (Response A, Response B, etc.)
     labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, ...
 
@@ -211,7 +220,7 @@ Now provide your evaluation and ranking:"""
 
     # Get rankings from all council models in parallel with progress callback
     responses = await query_models_parallel(
-        COUNCIL_MODELS,
+        council_models,
         messages,
         on_model_complete=on_model_complete
     )
@@ -273,17 +282,25 @@ Multiple AI responses to consider:
 Peer evaluations:
 {stage2_text}
 
-Your task: Write the FINAL ANSWER to the user's question.
+Your task: Write a PROFESSIONAL REPORT that answers the user's question.
 
-CRITICAL RULES:
-1. Output ONLY the answer - no meta-commentary, no "as chairman", no explanations about your process
-2. Respond in the SAME LANGUAGE as the user's question
+FORMAT REQUIREMENTS:
+1. Structure as a formal report with clear sections using markdown headers (##, ###)
+2. Start with a brief executive summary or introduction
+3. Organize content into logical sections with descriptive headers
+4. Use bullet points and numbered lists for clarity where appropriate
+5. End with a conclusion or summary section if relevant
+6. The report should be ready for direct PDF export - professional and well-organized
+
+CONTENT RULES:
+1. Output ONLY the report - no meta-commentary, no "as chairman", no process explanations
+2. Write in the SAME LANGUAGE as the user's question
 3. When models agree on factual information (especially from web research), trust that consensus
-4. Synthesize the best parts of all responses into one clear, direct answer
+4. Synthesize the best parts of all responses into one comprehensive report
 5. Do NOT contradict verified facts that multiple models agree on
-6. Be concise - only include information that directly answers the question
+6. Include relevant data, statistics, and sources where available
 
-Write your answer now:"""
+Write your report now:"""
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
