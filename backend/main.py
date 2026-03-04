@@ -1,5 +1,6 @@
 """FastAPI backend for LLM Council."""
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -25,12 +26,28 @@ from .config import COUNCIL_MODELS
 # Key: (conversation_id, message_id), Value: {"task": asyncio.Task, "cancelled": bool}
 running_jobs: Dict[tuple, Dict[str, Any]] = {}
 
-app = FastAPI(title="LLM Council API")
 
-# Enable CORS for local development
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle app startup and shutdown events."""
+    # Startup
+    search.ensure_index_exists()
+    yield
+    # Shutdown
+    pass
+
+
+app = FastAPI(title="LLM Council API", lifespan=lifespan)
+
+# Enable CORS for local development and network access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://192.168.50.177:5173",
+        "http://192.168.50.177:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -699,12 +716,6 @@ async def list_archived_conversations():
 
 
 # ============== Search Endpoints ==============
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize search index on startup."""
-    search.ensure_index_exists()
-
 
 @app.get("/api/search")
 async def search_conversations(

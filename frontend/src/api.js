@@ -2,7 +2,8 @@
  * API client for the LLM Council backend.
  */
 
-const API_BASE = 'http://localhost:8001';
+// Use relative URLs so it works on any network address (localhost, IP, hostname, etc.)
+const API_BASE = '';
 
 /**
  * Helper to process SSE stream

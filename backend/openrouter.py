@@ -8,6 +8,7 @@ from .config import (
     OPENAI_API_KEY,
     ANTHROPIC_API_KEY,
     GOOGLE_API_KEY,
+    OPENROUTER_API_KEY,
     PROVIDER_ENDPOINTS,
     OPENAI_RESPONSES_MODELS,
 )
@@ -123,6 +124,42 @@ async def _query_anthropic(
         }
 
 
+async def _query_openrouter(
+    model_name: str,
+    messages: List[Dict[str, str]],
+    timeout: float
+) -> Optional[Dict[str, Any]]:
+    """Query OpenRouter proxy endpoint.
+
+    The caller should supply a model identifier such as "gpt-5.2" or
+    "claude-sonnet-4-5"; we simply forward the request to OpenRouter's
+    /chat/completions endpoint using the shared OPENROUTER_API_KEY.
+    """
+    if not OPENROUTER_API_KEY:
+        print("OpenRouter key not set")
+        return None
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model_name,
+        "messages": messages,
+    }
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        message = data["choices"][0]["message"]
+        return {
+            "content": message.get("content"),
+            "reasoning_details": message.get("reasoning_details"),
+        }
+
+
 async def _query_google(
     model_name: str,
     messages: List[Dict[str, str]],
@@ -221,6 +258,10 @@ async def query_model(
             return await _query_anthropic(model_name, messages, timeout)
         elif provider == "google":
             return await _query_google(model_name, messages, timeout)
+        elif provider == "openrouter":
+            return await _query_openrouter(model_name, messages, timeout)
+        elif provider == "openrouter":
+            return await _query_openrouter(model_name, messages, timeout)
         else:
             print(f"Unknown provider: {provider}")
             return None

@@ -34,13 +34,28 @@ cd ..
 
 ### 2. Configure API Key
 
-Create a `.env` file in the project root:
+The code can operate in two modes:
+
+* **Direct provider mode** – you supply individual API keys for each
+  provider (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`), and the
+  backend talks to each service directly.
+* **OpenRouter mode** – you supply a single `OPENROUTER_API_KEY` and configure
+  models using the `openrouter/` prefix. All requests are proxied through
+  OpenRouter (https://openrouter.ai), so you only need the one key.
+
+Create a `.env` file in the project root and fill in the key(s) you intend to
+use:
 
 ```bash
+# one or more of the following
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_API_KEY=AIza...
 OPENROUTER_API_KEY=sk-or-v1-...
 ```
 
-Get your API key at [openrouter.ai](https://openrouter.ai/). Make sure to purchase the credits you need, or sign up for automatic top up.
+Get your OpenRouter key at [openrouter.ai](https://openrouter.ai/). Make sure to
+purchase the credits you need, or sign up for automatic top up.
 
 ### 3. Configure Models (Optional)
 
