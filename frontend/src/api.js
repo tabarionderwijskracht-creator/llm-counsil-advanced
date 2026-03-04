@@ -102,12 +102,17 @@ export const api = {
    * @param {string} content - The message content
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @param {string[]} excludedMessageIds - Optional array of message IDs to exclude from context
+   * @param {AbortSignal} signal - Optional AbortSignal for cancellation
+   * @param {string[]} attachmentIds - Optional array of attachment IDs to include as context
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent, excludedMessageIds = null, signal = null) {
+  async sendMessageStream(conversationId, content, onEvent, excludedMessageIds = null, signal = null, attachmentIds = null) {
     const body = { content };
     if (excludedMessageIds && excludedMessageIds.length > 0) {
       body.excluded_message_ids = excludedMessageIds;
+    }
+    if (attachmentIds && attachmentIds.length > 0) {
+      body.attachment_ids = attachmentIds;
     }
 
     const fetchOptions = {
@@ -360,6 +365,64 @@ export const api = {
     });
     if (!response.ok) {
       throw new Error('Failed to rebuild search index');
+    }
+    return response.json();
+  },
+
+  /**
+   * Upload a PDF file to a conversation.
+   * @param {string} conversationId - The conversation ID
+   * @param {File} file - The file to upload
+   * @returns {Promise<{id: string, name: string, size_bytes: number, page_count: number, text_length: number, warning?: string}>}
+   */
+  async uploadFile(conversationId, file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/upload`,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    );
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
+      throw new Error(error.detail || 'Failed to upload file');
+    }
+    return response.json();
+  },
+
+  /**
+   * List all attachments for a conversation.
+   * @param {string} conversationId - The conversation ID
+   * @returns {Promise<{attachments: Array}>}
+   */
+  async listAttachments(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/attachments`
+    );
+    if (!response.ok) {
+      throw new Error('Failed to list attachments');
+    }
+    return response.json();
+  },
+
+  /**
+   * Delete an attachment.
+   * @param {string} conversationId - The conversation ID
+   * @param {string} fileId - The file ID to delete
+   * @returns {Promise<{status: string, message: string}>}
+   */
+  async deleteAttachment(conversationId, fileId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/attachments/${fileId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to delete attachment');
     }
     return response.json();
   },

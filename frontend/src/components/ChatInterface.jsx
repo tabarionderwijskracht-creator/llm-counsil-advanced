@@ -897,6 +897,7 @@ export default function ChatInterface({
   manualExcludedFromCopy,
   manualExcludedFromContext,
   onToggleExcludeFromCopy,
+  onUploadFile,
   onToggleExcludeFromContext,
   copyCharThreshold,
   contextCharThreshold,
@@ -904,13 +905,58 @@ export default function ChatInterface({
   onContextCharThresholdChange
 }) {
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [uploadError, setUploadError] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (input.trim() && !isLoading && !isPendingResponse) {
-      onSendMessage(input);
+      const attachmentIds = attachments.map(a => a.id);
+      onSendMessage(input, attachmentIds);
       setInput('');
+      setAttachments([]);
     }
+  };
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset file input
+    e.target.value = '';
+
+    // Check file type
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setUploadError('Only PDF files are supported');
+      setTimeout(() => setUploadError(null), 3000);
+      return;
+    }
+
+    // Check file size (20MB max)
+    if (file.size > 20 * 1024 * 1024) {
+      setUploadError('File too large. Maximum size: 20MB');
+      setTimeout(() => setUploadError(null), 3000);
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError(null);
+
+    try {
+      const result = await onUploadFile(file);
+      setAttachments(prev => [...prev, { ...result, originalName: file.name }]);
+    } catch (error) {
+      setUploadError(error.message || 'Failed to upload file');
+      setTimeout(() => setUploadError(null), 5000);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleRemoveAttachment = (fileId) => {
+    setAttachments(prev => prev.filter(a => a.id !== fileId));
   };
 
   const handleKeyDown = (e) => {
@@ -966,36 +1012,108 @@ export default function ChatInterface({
       />
 
       <form className="input-form" onSubmit={handleSubmit}>
-        <textarea
-          className="message-input"
-          placeholder={placeholder}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={isLoading || isPendingResponse}
-          rows={3}
-        />
-        {(isLoading || isPendingResponse) ? (
+        {/* Attachments display */}
+        {attachments.length > 0 && (
+          <div className="attachments-bar">
+            {attachments.map(attachment => (
+              <div key={attachment.id} className="attachment-chip">
+                <svg className="attachment-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                <span className="attachment-name" title={attachment.name || attachment.originalName}>
+                  {(attachment.name || attachment.originalName).length > 20
+                    ? (attachment.name || attachment.originalName).substring(0, 17) + '...'
+                    : (attachment.name || attachment.originalName)}
+                </span>
+                <span className="attachment-info">
+                  {attachment.page_count} pages
+                </span>
+                {attachment.warning && (
+                  <span className="attachment-warning" title={attachment.warning}>⚠️</span>
+                )}
+                <button
+                  type="button"
+                  className="attachment-remove"
+                  onClick={() => handleRemoveAttachment(attachment.id)}
+                  title="Remove attachment"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Upload error display */}
+        {uploadError && (
+          <div className="upload-error">
+            {uploadError}
+          </div>
+        )}
+
+        <div className="input-row">
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+          />
+
+          {/* Upload button */}
           <button
             type="button"
-            className="stop-button"
-            onClick={onCancel}
-            title="Stop generation"
+            className="upload-button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading || isPendingResponse || isUploading}
+            title="Attach PDF document"
           >
-            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            </svg>
-            Stop
+            {isUploading ? (
+              <div className="upload-spinner"></div>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            )}
           </button>
-        ) : (
-          <button
-            type="submit"
-            className="send-button"
-            disabled={!input.trim()}
-          >
-            Send
-          </button>
-        )}
+
+          <textarea
+            className="message-input"
+            placeholder={placeholder}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isLoading || isPendingResponse}
+            rows={3}
+          />
+
+          {(isLoading || isPendingResponse) ? (
+            <button
+              type="button"
+              className="stop-button"
+              onClick={onCancel}
+              title="Stop generation"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+              Stop
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="send-button"
+              disabled={!input.trim()}
+            >
+              Send
+            </button>
+          )}
+        </div>
       </form>
     </div>
   );

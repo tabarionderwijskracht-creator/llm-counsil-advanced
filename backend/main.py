@@ -1,7 +1,7 @@
 """FastAPI backend for LLM Council."""
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -9,6 +9,8 @@ from typing import List, Dict, Any, Optional
 import uuid
 import json
 import asyncio
+import os
+import fitz  # PyMuPDF
 
 from . import storage
 from . import search
@@ -20,7 +22,7 @@ from .council import (
     stage3_synthesize_final,
     calculate_aggregate_rankings
 )
-from .config import COUNCIL_MODELS
+from .config import COUNCIL_MODELS, UPLOADS_DIR, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS, MAX_TEXT_CHARS, WARN_TEXT_CHARS
 
 # Track running jobs for cancellation
 # Key: (conversation_id, message_id), Value: {"task": asyncio.Task, "cancelled": bool}
@@ -63,6 +65,7 @@ class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
     excluded_message_ids: Optional[List[str]] = None  # Message IDs to exclude from context
+    attachment_ids: Optional[List[str]] = None  # File IDs to include as context
 
 
 class EditMessageRequest(BaseModel):
@@ -93,6 +96,40 @@ class ConversationV2(BaseModel):
     messages: Dict[str, Any]
     current_leaf_id: Optional[str]
     current_path: List[str]
+
+
+def get_attachment_text(conversation_id: str, attachment_ids: List[str]) -> str:
+    """
+    Fetch text content from uploaded PDF files.
+    Returns formatted document text to prepend to user query.
+    """
+    if not attachment_ids:
+        return ""
+
+    documents_text = []
+    for file_id in attachment_ids:
+        file_path = os.path.join(UPLOADS_DIR, conversation_id, f"{file_id}.pdf")
+        if not os.path.exists(file_path):
+            continue
+
+        try:
+            pdf_doc = fitz.open(file_path)
+            text_content = ""
+            for page in pdf_doc:
+                text_content += page.get_text()
+            pdf_doc.close()
+
+            # Get original filename from the file if possible
+            filename = f"{file_id}.pdf"
+            documents_text.append(f"[Document: {filename}]\n{text_content}")
+        except Exception as e:
+            print(f"Error reading attachment {file_id}: {e}")
+            continue
+
+    if not documents_text:
+        return ""
+
+    return "\n\n".join(documents_text) + "\n\n[User Question]\n"
 
 
 @app.get("/")
@@ -211,6 +248,10 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     excluded_ids = set(request.excluded_message_ids or [])
     conversation_history = storage.get_conversation_history_from_path(messages, current_path, excluded_ids)
 
+    # Get document context if attachments are provided
+    document_context = get_attachment_text(conversation_id, request.attachment_ids or [])
+    query_with_context = document_context + request.content if document_context else request.content
+
     async def event_generator():
         user_msg_id = None
         job_key = None
@@ -260,9 +301,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             storage.update_job_status(conversation_id, user_msg_id, 'stage1', model_progress=initial_progress)
             yield f"data: {json.dumps({'type': 'stage1_start', 'data': {'models': COUNCIL_MODELS}})}\n\n"
 
-            # Run stage1 with progress tracking
+            # Run stage1 with progress tracking (use query_with_context for document support)
             stage1_task = asyncio.create_task(
-                stage1_collect_responses(request.content, conversation_history, on_model_complete=model_progress_callback)
+                stage1_collect_responses(query_with_context, conversation_history, on_model_complete=model_progress_callback)
             )
 
             # Emit progress events as they come in
@@ -315,7 +356,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     pass
 
             stage2_task = asyncio.create_task(
-                stage2_collect_rankings(request.content, stage1_results, on_model_complete=model_progress_callback)
+                stage2_collect_rankings(query_with_context, stage1_results, on_model_complete=model_progress_callback)
             )
 
             # Emit progress events for stage 2
@@ -357,7 +398,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Stage 3: Synthesize final answer
             storage.update_job_status(conversation_id, user_msg_id, 'stage3')
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
+            stage3_result = await stage3_synthesize_final(query_with_context, stage1_results, stage2_results)
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Wait for title generation if it was started
@@ -755,6 +796,137 @@ async def rebuild_search_index():
     """
     result = search.rebuild_index()
     return result
+
+
+# ============== File Upload Endpoints ==============
+
+@app.post("/api/conversations/{conversation_id}/upload")
+async def upload_file(conversation_id: str, file: UploadFile = File(...)):
+    """
+    Upload a PDF file and extract its text content.
+
+    Returns file metadata including extracted text for use in conversation.
+    """
+    # Check if conversation exists
+    conversation = storage.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Validate file extension
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    # Read file content
+    content = await file.read()
+
+    # Validate file size
+    file_size = len(content)
+    max_size_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+    if file_size > max_size_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large. Maximum size: {MAX_FILE_SIZE_MB}MB"
+        )
+
+    # Extract text from PDF
+    try:
+        pdf_doc = fitz.open(stream=content, filetype="pdf")
+        text_content = ""
+        page_count = len(pdf_doc)
+        for page in pdf_doc:
+            text_content += page.get_text()
+        pdf_doc.close()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read PDF: {str(e)}")
+
+    # Check text length
+    if len(text_content) > MAX_TEXT_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"PDF text too long ({len(text_content):,} chars). Maximum: {MAX_TEXT_CHARS:,} chars. Try a shorter document."
+        )
+
+    # Generate file ID and save to disk
+    file_id = f"file_{uuid.uuid4().hex[:12]}"
+    upload_dir = os.path.join(UPLOADS_DIR, conversation_id)
+    os.makedirs(upload_dir, exist_ok=True)
+
+    file_path = os.path.join(upload_dir, f"{file_id}.pdf")
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    # Create attachment metadata
+    attachment = {
+        "id": file_id,
+        "name": file.filename,
+        "path": file_path,
+        "size_bytes": file_size,
+        "page_count": page_count,
+        "text_content": text_content,
+        "text_length": len(text_content),
+        "warning": "Large document - may increase response time" if len(text_content) > WARN_TEXT_CHARS else None
+    }
+
+    return attachment
+
+
+@app.get("/api/conversations/{conversation_id}/attachments")
+async def list_attachments(conversation_id: str):
+    """
+    List all uploaded files for a conversation.
+    """
+    upload_dir = os.path.join(UPLOADS_DIR, conversation_id)
+    if not os.path.exists(upload_dir):
+        return {"attachments": []}
+
+    attachments = []
+    for filename in os.listdir(upload_dir):
+        if filename.endswith(".pdf"):
+            file_path = os.path.join(upload_dir, filename)
+            file_id = filename.replace(".pdf", "")
+
+            # Get basic file info
+            stat = os.stat(file_path)
+
+            # Extract text for preview
+            try:
+                pdf_doc = fitz.open(file_path)
+                text_content = ""
+                for page in pdf_doc:
+                    text_content += page.get_text()
+                page_count = len(pdf_doc)
+                pdf_doc.close()
+            except:
+                text_content = ""
+                page_count = 0
+
+            attachments.append({
+                "id": file_id,
+                "name": filename,
+                "path": file_path,
+                "size_bytes": stat.st_size,
+                "page_count": page_count,
+                "text_length": len(text_content)
+            })
+
+    return {"attachments": attachments}
+
+
+@app.delete("/api/conversations/{conversation_id}/attachments/{file_id}")
+async def delete_attachment(conversation_id: str, file_id: str):
+    """
+    Delete an uploaded file.
+    """
+    file_path = os.path.join(UPLOADS_DIR, conversation_id, f"{file_id}.pdf")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    os.remove(file_path)
+    return {"status": "deleted", "message": "File deleted successfully"}
 
 
 if __name__ == "__main__":

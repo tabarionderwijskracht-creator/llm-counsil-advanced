@@ -22,7 +22,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # "openrouter/gpt-5.2" or "openrouter/gpt-5.1" etc.
 COUNCIL_MODELS = [
     "openrouter/openai/gpt-4-turbo",
-    "openrouter/google/gemini-2.0-flash",
+    "openrouter/openai/gpt-4o",
     "openrouter/anthropic/claude-3.5-sonnet",
 ]
 
@@ -43,3 +43,10 @@ OPENAI_RESPONSES_MODELS = ["gpt-5.2-pro", "gpt-5.2", "o3", "o4-mini"]
 
 # Data directory for conversation storage
 DATA_DIR = "data/conversations"
+
+# File upload configuration
+UPLOADS_DIR = "data/uploads"
+MAX_FILE_SIZE_MB = 20
+ALLOWED_EXTENSIONS = [".pdf"]
+MAX_TEXT_CHARS = 200000  # Max extracted text characters (~50K tokens)
+WARN_TEXT_CHARS = 50000  # Warn if text exceeds this (~12.5K tokens)

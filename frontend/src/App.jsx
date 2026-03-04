@@ -565,7 +565,7 @@ function App() {
     }
   }, []);
 
-  const handleSendMessage = async (content) => {
+  const handleSendMessage = async (content, attachmentIds = []) => {
     if (!currentConversationId) return;
 
     setIsLoading(true);
@@ -615,7 +615,7 @@ function App() {
         current_leaf_id: tempAssistantMsgId
       }));
 
-      // Send message with streaming, passing excluded message IDs (for API context)
+      // Send message with streaming, passing excluded message IDs (for API context) and attachments
       const excludedIds = Array.from(effectiveExcludedFromContext);
       await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
         // When we get the real IDs, update state
@@ -653,7 +653,7 @@ function App() {
         } else {
           processStreamEvent(eventType, event, userMsgId, (id) => { userMsgId = id; });
         }
-      }, excludedIds, abortControllerRef.current?.signal);
+      }, excludedIds, abortControllerRef.current?.signal, attachmentIds);
     } catch (error) {
       // Ignore abort errors (user cancelled)
       if (error.name === 'AbortError') {
@@ -1058,6 +1058,10 @@ function App() {
         contextCharThreshold={contextCharThreshold}
         onCopyCharThresholdChange={setCopyCharThreshold}
         onContextCharThresholdChange={setContextCharThreshold}
+        onUploadFile={async (file) => {
+          if (!currentConversationId) throw new Error('No conversation selected');
+          return api.uploadFile(currentConversationId, file);
+        }}
       />
     </div>
   );
