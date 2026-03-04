@@ -47,6 +47,9 @@ SCHEMA_VERSION = 2
 # Archived conversations directory
 ARCHIVE_DIR = os.path.join(os.path.dirname(DATA_DIR), "archived")
 
+# Folders storage file
+FOLDERS_FILE = os.path.join(os.path.dirname(DATA_DIR), "folders.json")
+
 
 def ensure_data_dir():
     """Ensure the data directory exists."""
@@ -389,7 +392,8 @@ def list_conversations() -> List[Dict[str, Any]]:
                         "id": data["id"],
                         "created_at": data.get("created_at", ""),
                         "title": data.get("title", "New Conversation"),
-                        "message_count": message_count
+                        "message_count": message_count,
+                        "folder_id": data.get("folder_id")
                     })
             except (json.JSONDecodeError, KeyError):
                 # Skip corrupted files
@@ -571,10 +575,11 @@ def add_assistant_message(
     stage2: List[Dict[str, Any]],
     stage3: Dict[str, Any],
     parent_id: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
+    stage0: Optional[Dict[str, Any]] = None
 ) -> str:
     """
-    Add an assistant message with all 3 stages to a conversation.
+    Add an assistant message with all stages to a conversation.
 
     Args:
         conversation_id: Conversation identifier
@@ -583,6 +588,7 @@ def add_assistant_message(
         stage3: Final synthesized response
         parent_id: Parent message ID (uses current_leaf_id if None)
         metadata: Optional metadata dict (label_to_model, aggregate_rankings)
+        stage0: Optional web research results
 
     Returns:
         The new message ID
@@ -600,6 +606,7 @@ def add_assistant_message(
         "id": msg_id,
         "parent_id": parent_id,
         "role": "assistant",
+        "stage0": stage0,
         "stage1": stage1,
         "stage2": stage2,
         "stage3": stage3,
@@ -833,3 +840,140 @@ def list_archived_conversations() -> List[Dict[str, Any]]:
     conversations.sort(key=lambda x: x["created_at"], reverse=True)
 
     return conversations
+
+
+# ============================================================================
+# Folder Management Functions
+# ============================================================================
+
+def _load_folders() -> Dict[str, Any]:
+    """Load folders from the folders file."""
+    if not os.path.exists(FOLDERS_FILE):
+        return {"folders": []}
+
+    with open(FOLDERS_FILE, 'r') as f:
+        return json.load(f)
+
+
+def _save_folders(data: Dict[str, Any]):
+    """Save folders to the folders file."""
+    ensure_data_dir()
+    with open(FOLDERS_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+def list_folders() -> List[Dict[str, Any]]:
+    """
+    List all folders.
+
+    Returns:
+        List of folder dicts with id, name, created_at
+    """
+    data = _load_folders()
+    folders = data.get("folders", [])
+    # Sort by name
+    folders.sort(key=lambda x: x.get("name", "").lower())
+    return folders
+
+
+def create_folder(name: str) -> Dict[str, Any]:
+    """
+    Create a new folder.
+
+    Args:
+        name: Name for the folder
+
+    Returns:
+        The created folder dict
+    """
+    data = _load_folders()
+
+    folder = {
+        "id": f"folder_{uuid.uuid4().hex[:12]}",
+        "name": name,
+        "created_at": datetime.utcnow().isoformat()
+    }
+
+    data["folders"].append(folder)
+    _save_folders(data)
+
+    return folder
+
+
+def update_folder(folder_id: str, name: str) -> Optional[Dict[str, Any]]:
+    """
+    Update a folder's name.
+
+    Args:
+        folder_id: Folder identifier
+        name: New name for the folder
+
+    Returns:
+        Updated folder dict or None if not found
+    """
+    data = _load_folders()
+
+    for folder in data["folders"]:
+        if folder["id"] == folder_id:
+            folder["name"] = name
+            _save_folders(data)
+            return folder
+
+    return None
+
+
+def delete_folder(folder_id: str) -> bool:
+    """
+    Delete a folder. Conversations in the folder are moved to no folder (null).
+
+    Args:
+        folder_id: Folder identifier
+
+    Returns:
+        True if deleted, False if not found
+    """
+    data = _load_folders()
+
+    original_length = len(data["folders"])
+    data["folders"] = [f for f in data["folders"] if f["id"] != folder_id]
+
+    if len(data["folders"]) == original_length:
+        return False
+
+    _save_folders(data)
+
+    # Move all conversations from this folder to no folder
+    for filename in os.listdir(DATA_DIR):
+        if filename.endswith('.json'):
+            filepath = os.path.join(DATA_DIR, filename)
+            try:
+                with open(filepath, 'r') as f:
+                    conv = json.load(f)
+                if conv.get("folder_id") == folder_id:
+                    conv["folder_id"] = None
+                    with open(filepath, 'w') as f:
+                        json.dump(conv, f, indent=2)
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+    return True
+
+
+def move_conversation_to_folder(conversation_id: str, folder_id: Optional[str]) -> bool:
+    """
+    Move a conversation to a folder (or remove from folder if folder_id is None).
+
+    Args:
+        conversation_id: Conversation identifier
+        folder_id: Target folder ID or None to remove from folder
+
+    Returns:
+        True if moved, False if conversation not found
+    """
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        return False
+
+    conversation["folder_id"] = folder_id
+    save_conversation(conversation)
+    return True

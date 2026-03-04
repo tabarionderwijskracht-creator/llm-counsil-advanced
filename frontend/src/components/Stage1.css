@@ -83,13 +83,13 @@
 .tab:hover {
   background: #f0f0f0;
   color: #333;
-  border-color: #4a90e2;
+  border-color: #4CAF50;
 }
 
 .tab.active {
   background: #ffffff;
-  color: #4a90e2;
-  border-color: #4a90e2;
+  color: #4CAF50;
+  border-color: #4CAF50;
   border-bottom-color: #ffffff;
   font-weight: 600;
 }

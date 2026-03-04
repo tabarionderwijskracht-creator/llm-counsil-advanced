@@ -430,4 +430,97 @@ export const api = {
     }
     return response.json();
   },
+
+  // ============================================================================
+  // Folder API Methods
+  // ============================================================================
+
+  /**
+   * List all folders.
+   * @returns {Promise<Array<{id: string, name: string, created_at: string}>>}
+   */
+  async listFolders() {
+    const response = await fetch(`${API_BASE}/api/folders`);
+    if (!response.ok) {
+      throw new Error('Failed to list folders');
+    }
+    return response.json();
+  },
+
+  /**
+   * Create a new folder.
+   * @param {string} name - The folder name
+   * @returns {Promise<{id: string, name: string, created_at: string}>}
+   */
+  async createFolder(name) {
+    const response = await fetch(`${API_BASE}/api/folders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to create folder');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update a folder's name.
+   * @param {string} folderId - The folder ID
+   * @param {string} name - The new folder name
+   * @returns {Promise<{id: string, name: string, created_at: string}>}
+   */
+  async updateFolder(folderId, name) {
+    const response = await fetch(`${API_BASE}/api/folders/${folderId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update folder');
+    }
+    return response.json();
+  },
+
+  /**
+   * Delete a folder.
+   * @param {string} folderId - The folder ID
+   * @returns {Promise<{status: string, message: string}>}
+   */
+  async deleteFolder(folderId) {
+    const response = await fetch(`${API_BASE}/api/folders/${folderId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete folder');
+    }
+    return response.json();
+  },
+
+  /**
+   * Move a conversation to a folder.
+   * @param {string} conversationId - The conversation ID
+   * @param {string|null} folderId - The folder ID (null to remove from folder)
+   * @returns {Promise<{status: string, message: string}>}
+   */
+  async moveConversationToFolder(conversationId, folderId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/move`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ folder_id: folderId }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to move conversation');
+    }
+    return response.json();
+  },
 };

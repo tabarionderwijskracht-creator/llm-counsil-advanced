@@ -247,6 +247,11 @@ async def stage3_synthesize_final(
     Returns:
         Dict with 'model' and 'response' keys
     """
+    from datetime import datetime
+
+    # Get current date for temporal context
+    current_date = datetime.now().strftime("%B %d, %Y")
+
     # Build comprehensive context for chairman
     stage1_text = "\n\n".join([
         f"Model: {result['model']}\nResponse: {result['response']}"
@@ -258,22 +263,27 @@ async def stage3_synthesize_final(
         for result in stage2_results
     ])
 
-    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
+    chairman_prompt = f"""Today's Date: {current_date}
 
-Original Question: {user_query}
+User Question: {user_query}
 
-STAGE 1 - Individual Responses:
+Multiple AI responses to consider:
 {stage1_text}
 
-STAGE 2 - Peer Rankings:
+Peer evaluations:
 {stage2_text}
 
-Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
-- The individual responses and their insights
-- The peer rankings and what they reveal about response quality
-- Any patterns of agreement or disagreement
+Your task: Write the FINAL ANSWER to the user's question.
 
-Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+CRITICAL RULES:
+1. Output ONLY the answer - no meta-commentary, no "as chairman", no explanations about your process
+2. Respond in the SAME LANGUAGE as the user's question
+3. When models agree on factual information (especially from web research), trust that consensus
+4. Synthesize the best parts of all responses into one clear, direct answer
+5. Do NOT contradict verified facts that multiple models agree on
+6. Be concise - only include information that directly answers the question
+
+Write your answer now:"""
 
     messages = [{"role": "user", "content": chairman_prompt}]
 

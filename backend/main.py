@@ -87,6 +87,29 @@ class ConversationMetadata(BaseModel):
     created_at: str
     title: str
     message_count: int
+    folder_id: Optional[str] = None
+
+
+class CreateFolderRequest(BaseModel):
+    """Request to create a new folder."""
+    name: str
+
+
+class UpdateFolderRequest(BaseModel):
+    """Request to update a folder."""
+    name: str
+
+
+class MoveToFolderRequest(BaseModel):
+    """Request to move a conversation to a folder."""
+    folder_id: Optional[str] = None  # None to remove from folder
+
+
+class FolderResponse(BaseModel):
+    """Folder response."""
+    id: str
+    name: str
+    created_at: str
 
 
 class ConversationV2(BaseModel):
@@ -145,6 +168,51 @@ async def list_conversations():
     """List all conversations (metadata only)."""
     return storage.list_conversations()
 
+
+# ============================================================================
+# Folder Endpoints
+# ============================================================================
+
+@app.get("/api/folders", response_model=List[FolderResponse])
+async def list_folders():
+    """List all folders."""
+    return storage.list_folders()
+
+
+@app.post("/api/folders", response_model=FolderResponse)
+async def create_folder(request: CreateFolderRequest):
+    """Create a new folder."""
+    return storage.create_folder(request.name)
+
+
+@app.put("/api/folders/{folder_id}", response_model=FolderResponse)
+async def update_folder(folder_id: str, request: UpdateFolderRequest):
+    """Update a folder's name."""
+    folder = storage.update_folder(folder_id, request.name)
+    if folder is None:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return folder
+
+
+@app.delete("/api/folders/{folder_id}")
+async def delete_folder(folder_id: str):
+    """Delete a folder. Conversations in the folder are moved to no folder."""
+    if not storage.delete_folder(folder_id):
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return {"status": "ok", "message": "Folder deleted"}
+
+
+@app.post("/api/conversations/{conversation_id}/move")
+async def move_conversation_to_folder(conversation_id: str, request: MoveToFolderRequest):
+    """Move a conversation to a folder (or remove from folder if folder_id is null)."""
+    if not storage.move_conversation_to_folder(conversation_id, request.folder_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"status": "ok", "message": "Conversation moved"}
+
+
+# ============================================================================
+# Conversation Endpoints
+# ============================================================================
 
 @app.post("/api/conversations")
 async def create_conversation(request: CreateConversationRequest):
@@ -470,7 +538,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 stage1_results,
                 stage2_results,
                 stage3_result,
-                metadata=metadata
+                metadata=metadata,
+                stage0=research_context
             )
 
             # Mark job as complete

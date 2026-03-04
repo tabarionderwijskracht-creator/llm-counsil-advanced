@@ -32,7 +32,7 @@ RESEARCH_MODEL = "openrouter/perplexity/sonar-deep-research"
 RESEARCH_ENABLED_DEFAULT = True  # Can be overridden per-request
 
 # Chairman model - synthesizes final response
-CHAIRMAN_MODEL = "openrouter/anthropic/claude-3.5-sonnet"
+CHAIRMAN_MODEL = "openrouter/openai/gpt-5.1"
 
 # Provider API endpoints (used when calling services directly)
 PROVIDER_ENDPOINTS = {

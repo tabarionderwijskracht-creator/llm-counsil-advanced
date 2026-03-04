@@ -77,6 +77,7 @@ function App() {
   const [copyCharThreshold, setCopyCharThreshold] = useState(100000); // Auto-exclude from copy if > this
   const [contextCharThreshold, setContextCharThreshold] = useState(100000); // Auto-exclude from context if > this
   const [isSearchOpen, setIsSearchOpen] = useState(false); // Search modal state
+  const [folders, setFolders] = useState([]); // Folder list
 
   // Global keyboard shortcut for search (Cmd+K / Ctrl+K)
   useEffect(() => {
@@ -95,6 +96,7 @@ function App() {
   useEffect(() => {
     loadConversations();
     loadArchivedConversations();
+    loadFolders();
 
     // Check URL for conversation parameter
     const params = new URLSearchParams(window.location.search);
@@ -282,6 +284,56 @@ function App() {
       setArchivedConversations(convs);
     } catch (error) {
       console.error('Failed to load archived conversations:', error);
+    }
+  };
+
+  const loadFolders = async () => {
+    try {
+      const foldersData = await api.listFolders();
+      setFolders(foldersData);
+    } catch (error) {
+      console.error('Failed to load folders:', error);
+    }
+  };
+
+  const handleCreateFolder = async (name) => {
+    try {
+      const newFolder = await api.createFolder(name);
+      setFolders([...folders, newFolder].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+    }
+  };
+
+  const handleRenameFolder = async (folderId, name) => {
+    try {
+      await api.updateFolder(folderId, name);
+      setFolders(folders.map(f => f.id === folderId ? { ...f, name } : f).sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (error) {
+      console.error('Failed to rename folder:', error);
+    }
+  };
+
+  const handleDeleteFolder = async (folderId) => {
+    try {
+      await api.deleteFolder(folderId);
+      setFolders(folders.filter(f => f.id !== folderId));
+      // Reload conversations to update folder_id
+      loadConversations();
+    } catch (error) {
+      console.error('Failed to delete folder:', error);
+    }
+  };
+
+  const handleMoveConversation = async (conversationId, folderId) => {
+    try {
+      await api.moveConversationToFolder(conversationId, folderId);
+      // Update local state
+      setConversations(conversations.map(c =>
+        c.id === conversationId ? { ...c, folder_id: folderId } : c
+      ));
+    } catch (error) {
+      console.error('Failed to move conversation:', error);
     }
   };
 
@@ -1055,12 +1107,17 @@ function App() {
       <Sidebar
         conversations={conversations}
         archivedConversations={archivedConversations}
+        folders={folders}
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
         onArchiveConversation={handleArchiveConversation}
         onUnarchiveConversation={handleUnarchiveConversation}
         onDeleteConversation={handleDeleteConversation}
+        onCreateFolder={handleCreateFolder}
+        onRenameFolder={handleRenameFolder}
+        onDeleteFolder={handleDeleteFolder}
+        onMoveConversation={handleMoveConversation}
         showArchived={showArchived}
         onToggleShowArchived={handleToggleShowArchived}
         onOpenSearch={() => setIsSearchOpen(true)}
