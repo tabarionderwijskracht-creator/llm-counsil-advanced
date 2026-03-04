@@ -252,6 +252,35 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     document_context = get_attachment_text(conversation_id, request.attachment_ids or [])
     query_with_context = document_context + request.content if document_context else request.content
 
+    # Build attachment metadata for storage
+    attachments_metadata = []
+    if request.attachment_ids:
+        for file_id in request.attachment_ids:
+            file_path = os.path.join(UPLOADS_DIR, conversation_id, f"{file_id}.pdf")
+            metadata_path = os.path.join(UPLOADS_DIR, conversation_id, f"{file_id}.json")
+            if os.path.exists(file_path):
+                # Try to load metadata from JSON file
+                original_name = f"{file_id}.pdf"
+                page_count = 0
+                try:
+                    if os.path.exists(metadata_path):
+                        with open(metadata_path, "r") as f:
+                            meta = json.load(f)
+                            original_name = meta.get("original_name", original_name)
+                            page_count = meta.get("page_count", 0)
+                    else:
+                        # Fallback: read page count from PDF
+                        pdf_doc = fitz.open(file_path)
+                        page_count = len(pdf_doc)
+                        pdf_doc.close()
+                except:
+                    pass
+                attachments_metadata.append({
+                    "id": file_id,
+                    "name": original_name,
+                    "page_count": page_count
+                })
+
     async def event_generator():
         user_msg_id = None
         job_key = None
@@ -277,7 +306,12 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
         try:
             # Add user message (job_status starts as 'pending')
-            user_msg_id = storage.add_user_message(conversation_id, request.content)
+            user_msg_id = storage.add_user_message(
+                conversation_id,
+                request.content,
+                attachment_ids=request.attachment_ids,
+                attachments=attachments_metadata if attachments_metadata else None
+            )
             job_key = (conversation_id, user_msg_id)
 
             # Register this job for potential cancellation
@@ -858,6 +892,16 @@ async def upload_file(conversation_id: str, file: UploadFile = File(...)):
     file_path = os.path.join(upload_dir, f"{file_id}.pdf")
     with open(file_path, "wb") as f:
         f.write(content)
+
+    # Save metadata alongside PDF for recovery
+    metadata_path = os.path.join(upload_dir, f"{file_id}.json")
+    with open(metadata_path, "w") as f:
+        json.dump({
+            "id": file_id,
+            "original_name": file.filename,
+            "page_count": page_count,
+            "size_bytes": file_size
+        }, f)
 
     # Create attachment metadata
     attachment = {

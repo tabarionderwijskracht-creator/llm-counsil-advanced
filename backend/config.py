@@ -21,9 +21,10 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # for everything.  In that case the model identifiers should look like
 # "openrouter/gpt-5.2" or "openrouter/gpt-5.1" etc.
 COUNCIL_MODELS = [
-    "openrouter/openai/gpt-4-turbo",
-    "openrouter/openai/gpt-4o",
+    "openrouter/openai/gpt-5.1",
+    "openrouter/google/gemini-2.5-pro-preview",
     "openrouter/anthropic/claude-3.5-sonnet",
+    "openrouter/perplexity/sonar-deep-research",
 ]
 
 # Chairman model - synthesizes final response

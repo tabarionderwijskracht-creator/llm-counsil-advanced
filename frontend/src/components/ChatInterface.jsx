@@ -275,6 +275,23 @@ const UserMessage = memo(function UserMessage({
           <Markdown>{message.content}</Markdown>
         )}
       </div>
+      {/* Show attachments that were used with this message */}
+      {message.attachments && message.attachments.length > 0 && (
+        <div className="message-attachments">
+          {message.attachments.map(attachment => (
+            <div key={attachment.id} className="message-attachment-chip">
+              <svg className="attachment-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              <span className="attachment-name" title={attachment.name}>
+                {attachment.name.length > 25 ? attachment.name.substring(0, 22) + '...' : attachment.name}
+              </span>
+              <span className="attachment-pages">{attachment.page_count} pages</span>
+            </div>
+          ))}
+        </div>
+      )}
       {isEditing && (
         <div className="editing-indicator">
           <div className="spinner"></div>

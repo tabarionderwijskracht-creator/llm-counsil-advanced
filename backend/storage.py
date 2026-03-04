@@ -404,7 +404,9 @@ def list_conversations() -> List[Dict[str, Any]]:
 def add_user_message(
     conversation_id: str,
     content: str,
-    parent_id: Optional[str] = None
+    parent_id: Optional[str] = None,
+    attachment_ids: Optional[List[str]] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None
 ) -> str:
     """
     Add a user message to a conversation.
@@ -413,6 +415,8 @@ def add_user_message(
         conversation_id: Conversation identifier
         content: User message content
         parent_id: Parent message ID (uses current_leaf_id if None)
+        attachment_ids: Optional list of attachment file IDs (legacy, prefer attachments)
+        attachments: Optional list of attachment metadata dicts with id, name, page_count
 
     Returns:
         The new message ID
@@ -436,7 +440,7 @@ def add_user_message(
             parent_id = leaf_msg.get("parent_id")
 
     msg_id = generate_message_id()
-    conversation["messages"][msg_id] = {
+    msg_data = {
         "id": msg_id,
         "parent_id": parent_id,
         "role": "user",
@@ -446,6 +450,15 @@ def add_user_message(
         "job_status": "pending",
         "job_started_at": datetime.utcnow().isoformat()
     }
+
+    # Add attachment metadata if provided (full metadata preferred)
+    if attachments:
+        msg_data["attachments"] = attachments
+    elif attachment_ids:
+        # Legacy: store IDs only if full metadata not provided
+        msg_data["attachment_ids"] = attachment_ids
+
+    conversation["messages"][msg_id] = msg_data
 
     # Update current_leaf_id
     conversation["current_leaf_id"] = msg_id
